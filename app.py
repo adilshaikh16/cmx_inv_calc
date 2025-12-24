@@ -1,58 +1,39 @@
 import streamlit as st
 import pandas as pd
+from pdf_parser import parse_invoice
+from calculator import calculate_invoice
 
-st.set_page_config(
-    page_title="Invoice Discount Calculator",
-    layout="wide"
-)
-
-st.title("🧾 Invoice Discount Calculator")
+st.set_page_config("Invoice Auto Calculator", layout="wide")
+st.title("🧾 Invoice Auto Calculator (PDF → Auto Scan)")
 
 st.markdown("""
-### Rules
-- **Discount:** 16%
-- Discount applies **only on Paid Qty**
-- **Effective Rate = (Paid Qty × Discounted Rate) / Total Qty**
+### Logic
+- Discount = **16%**
+- Discount sirf **Paid Qty**
+- Free qty sirf **Effective Rate** me include
 """)
 
-# Editable input table
-df = st.data_editor(
-    pd.DataFrame({
-        "Item": [""],
-        "Rate": [0.0],
-        "Paid Qty": [0],
-        "Free Qty": [0]
-    }),
-    num_rows="dynamic",
-    use_container_width=True
+uploaded_pdf = st.file_uploader(
+    "Upload Invoice PDF (Crystal Reports format)",
+    type="pdf"
 )
 
-if st.button("Calculate"):
-    data = df.copy()
+if uploaded_pdf:
+    with st.spinner("Scanning PDF..."):
+        df = parse_invoice(uploaded_pdf)
 
-    data["Total Qty"] = data["Paid Qty"] + data["Free Qty"]
-    data["Discounted Rate"] = data["Rate"] * 0.84
-    data["Paid Amount"] = data["Paid Qty"] * data["Discounted Rate"]
+    st.subheader("📥 Extracted Data (Auto)")
+    st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
-    data["Effective Rate"] = data.apply(
-        lambda r: round(
-            r["Paid Amount"] / r["Total Qty"]
-            if r["Total Qty"] > 0 else 0,
-            2
-        ),
-        axis=1
-    )
+    if st.button("Calculate Invoice"):
+        result, gross, discount, net = calculate_invoice(df)
 
-    gross = (data["Rate"] * data["Paid Qty"]).sum()
-    discount = gross * 0.16
-    net = data["Paid Amount"].sum()
+        st.subheader("📊 Final Calculated Invoice")
+        st.dataframe(result, use_container_width=True)
 
-    st.subheader("📊 Invoice Result")
-    st.dataframe(data, use_container_width=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Gross Amount", f"{gross:,.2f}")
+        c2.metric("Discount (16%)", f"{discount:,.2f}")
+        c3.metric("Net Amount", f"{net:,.2f}")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Gross Amount", f"{gross:,.2f}")
-    col2.metric("Discount (16%)", f"{discount:,.2f}")
-    col3.metric("Net Amount", f"{net:,.2f}")
-
-    st.success("Invoice calculated successfully ✅")
+        st.success("✅ PDF successfully scanned & calculated")
